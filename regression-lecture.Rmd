@@ -1,0 +1,322 @@
+---
+title: "Regression Lectures"
+output:
+  html_notebook: default
+  pdf_document: default
+  word_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits = 4)
+library(Lahman)
+library(tidyverse)
+library(ggExtra)
+library(dslabs)
+library(plotly)
+library(corrplot)
+ds_theme_set()
+```
+
+### Case study on Moneyball
+
+* Bill James was the originator of the **sabermetrics**, the approach of using data to predict what outcomes best predicted if a team would win.
+
+* The goal of baseball game is to score more runs, than the other team.
+
+* Each team has 9 batters who have an opportunity to hit a ball with a bat in a predetermined order.
+
+* Each time a batter has an opportunity to bat, we call it a plate appearance (PA).
+
+* The PA ends with a binary outcome: the batter either makes an out (failure) and returns to the bench or the batter doesn’t (success) and can run around the bases, and potentially score a run (reach all 4 bases).
+
+* There are five ways a batter can succeed (not make an out):
+
+1. Bases on balls (BB): the pitcher fails to throw the ball through a predefined area considered to be hittable (the strike zone), so the batter is permitted to go to first base.
+
+2. Single: the batter hits the ball and gets to first base.
+
+3. Double (2B): the batter hits the ball and gets to second base.
+
+4. Triple (3B): the batter hits the ball and gets to third base.
+
+5. Home Run (HR): the batter hits the ball and goes all the way home and scores a run.
+
+* Historically, the batting average has been considered the most important offensive statistic. To define this average, we define a hit (H) and an at bat (AB). Singles, doubles, triples and home runs are hits. The fifth way to be successful, a walk (BB), is not a hit. An AB is the number of times you either get a hit or make an out; BBs are excluded. **The batting average is simply H/AB and is considered the main measure of a success rate.**
+
+The visualization of choice when exploring the relationship between two variables like home runs and runs is a **scatterplot**.
+
+```{r plots, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+
+Teams %>% filter(yearID %in% 1961:2001) %>%
+    mutate(HR_per_game = HR / G, R_per_game = R / G) %>%
+    ggplot(aes(HR_per_game, R_per_game)) + 
+    geom_point(alpha = 0.5)
+```
+
+```{r plots2, include=FALSE}
+
+#Scatterplot of the relationship between stolen bases and wins
+Teams %>% filter(yearID %in% 1961:2001) %>%
+    mutate(SB_per_game = SB / G, R_per_game = R / G) %>%
+    ggplot(aes(SB_per_game, R_per_game)) + 
+    geom_point(alpha = 0.5)
+```
+
+```{r plots3, include=FALSE}
+
+#Scatterplot of the relationship between bases on balls and runs
+Teams %>% filter(yearID %in% 1961:2001) %>%
+    mutate(BB_per_game = BB / G, R_per_game = R / G) %>%
+    ggplot(aes(BB_per_game, R_per_game)) + 
+    geom_point(alpha = 0.5)
+```
+
+* Question1
+
+What is the aplication of statistics and data science to baseball called?
+
+*Sabermetrics*
+
+* Question2
+
+What is the outcome is not included in the batting average?
+
+*A base on balls*
+
+* Question3
+
+Why do we consider team statistics as well as individual player statistcs?
+
+Team statistics are important because the success of individual players depends also on the strength of their team.
+
+* Question4
+
+You want to know whether teams with more at-bats per game have more runs per game.
+
+```{r echo=FALSE}
+
+
+p <- Teams %>% filter(yearID %in% 1961:2001 ) %>%
+    mutate(AB_per_game = AB/G, R_per_game = R/G) %>%
+    ggplot(aes(AB_per_game, R_per_game)) + 
+    geom_point(alpha = 0.5) +
+    labs(x = 'at-bats per game', y = 'Runs per game', title = 'Relationship (at-bats x runs) per game' )
+
+
+p1 <- ggMarginal(p, type = "histogram", color = 'black', fill = 'purple')
+
+p1
+```
+
+* Question6
+
+Load the Lahman library. Filter the Teams data frame to include years from 1961 to 2001. Make a scatterplot of runs per game versus at bats (AB) per game.
+
+```{r plot5, echo=FALSE}
+
+p <- Teams %>% 
+     filter(yearID %in% 1961:2001) %>%
+     mutate(runs_per_game = R/G, AB_per_game = AB/G) %>%
+     ggplot(aes(runs_per_game, AB_per_game)) +
+     geom_point(alpha = 0.5) +
+     geom_smooth(method = lm, color = "red", se = FALSE)
+ggplotly(p)
+```
+
+* Question7
+
+Use the filtered Teams data frame from Question 6. Make a scatterplot of win rate (number of wins per game) versus number of fielding errors (E) per game.
+
+
+Which of the following is true?
+
+```{r q7, echo=FALSE}
+
+p <- Teams %>% 
+     filter(yearID %in% 1961:2001) %>%
+     mutate(win_rate = W/G, E_rate = E/G) %>%
+     ggplot(aes(win_rate, E_rate)) +
+     geom_point(alpha = 0.5) +
+     labs(x = 'Wins per game', y = 'Fielding errors per game') +
+     geom_smooth(method = lm, color = "red", se = FALSE)
+ggplotly(p)
+```
+
+When you examine the scatterplot above, you can see a clear trend towards decreased win rate with increasing number of errors per game.
+
+* Question8
+
+Use the filtered Teams data frame from Question 6. Make a scatterplot of triples (X3B) per game versus doubles (X2B) per game.
+
+```{r q8, echo=FALSE}
+
+p <- Teams %>% 
+     filter(yearID %in% 1961:2001) %>%
+     mutate(triples_per_game = X3B/G, doubles_per_game = X2B/G) %>%
+     ggplot(aes(triples_per_game, doubles_per_game)) +
+     geom_point(alpha = 0.5) +
+     labs(x = 'Triples per game', y = 'Doubles per game') +
+     geom_smooth(method = lm, color = "red", se = FALSE)
+ggplotly(p)
+```
+
+### Correlation - Case Study: is height hereditary?
+
+
+
+* Galton tried to predict sons' heights based on fathers' heights.
+
+* The mean and standard errors are insufficient for describing an important characteristic of the data: the trend that the taller the father, the taller the son.
+
+* The **correlation coefficient** is an informative summary of how two variables move together that can be used to predict one variable using the other.
+
+```{r Galton-data, echo=FALSE}
+
+library(HistData)
+data("GaltonFamilies")
+set.seed(1983)
+
+#glimpse(GaltonFamilies)
+
+galton_heights <- GaltonFamilies %>%
+  filter(gender == "male") %>%
+  group_by(family) %>%
+  sample_n(1) %>%  # seleciona n amostras por linha de uma tabela
+  ungroup() %>%
+  select(father, childHeight) %>%
+  rename(son = childHeight)
+# head(galton_heights)
+
+# means and standard deviations
+galton_heights %>%
+    summarize(mean(father), sd(father), mean(son), sd(son))
+```
+
+```{r plot-Galton-filtered-data, echo=FALSE}
+
+# scatterplot of father and son heights
+galton_heights %>%
+    ggplot(aes(father, son)) +
+    geom_point(alpha = 0.5)
+```
+
+```{r matrix-correlation, echo=FALSE}
+
+mcor <- cor(galton_heights)
+mcor
+
+
+galton_heights %>% summarize(r = cor(father, son)) %>% pull(r)
+corrplot(mcor)
+```
+
+* The correlation that we compute and use as a summary is a random variable.
+
+* When interpreting correlations, it is important to remember that correlations derived from samples are estimates containing uncertainty.
+
+* Because the sample correlation is an average of independent draws, the central limit theorem applies. 
+
+```{r sample-correlation, echo=FALSE}
+
+# compute sample correlation
+R <- sample_n(galton_heights, 25, replace = TRUE) %>%
+    summarize(r = cor(father, son))
+R
+
+# Monte Carlo simulation to show distribution of sample correlation
+B <- 1000
+N <- 25
+R <- replicate(B, {
+    sample_n(galton_heights, N, replace = TRUE) %>%
+    summarize(r = cor(father, son)) %>%
+    pull(r)
+})
+qplot(R, geom = "histogram", binwidth = 0.05, color = I("black"))
+
+# expected value and standard error
+mean(R)
+sd(R)
+# QQ-plot to evaluate whether N is large enough
+data.frame(R) %>%
+    ggplot(aes(sample = R)) +
+    stat_qq() +
+    geom_abline(intercept = mean(R), slope = sqrt((1-mean(R)^2)/(N-2)))
+```
+
+*Questions:
+
+* 1.While studying heredity, Francis Galton developed what important statistical concept?
+
+*Francis Galton developed the concept of correlation while study heredity.*
+
+* 2.The correlation coefficient is a summary of what?
+
+*The correlation coefficient is a summary of the trend between two variables.*
+
+*The standard deviation describes the dispersion of a variable; the mean is a description of a variable’s central tendency; the distribution of a variable (e.g., normal, log-normal) describes the possible values of your data and the probability of them occurring.*
+
+* 4. Instead of running a Monte Carlo simulation with a sample size of 25 from the 179 father-son pairs described in the videos, we now run our simulation with a sample size of 50.
+Would you expect the **expected value** of our sample correlation to increase, decrease, or stay approximately the same?
+
+Explanation
+*Because the expected value of the sample correlation is the population correlation, it should stay approximately the same even if the sample size is increased.*
+
+* 5. Instead of running a Monte Carlo simulation with a sample size of 25 from the 179 father-son pairs described in the videos, we now run our simulation with a sample size of 50.
+Would you expect the **standard error** of our sample correlation to increase, decrease, or stay approximately the same?
+
+Explanation
+
+*As the sample size N increases, the standard deviation of the sample correlation should decrease.*
+
+* 6. If X and Y are completely independent, what do you expect the value of the correlation coefficient to be?
+
+Explanation
+
+*Variables that are independent of each other have a correlation coefficient of 0.*
+
+* 7. Load the Lahman library. Filter the Teams data frame to include years from 1961 to 2001.
+What is the correlation coefficient between number of runs per game and number of at bats per game?
+
+```{r 7q, echo=FALSE}
+
+corr <- Teams %>% filter(yearID %in% 1961:2001 ) %>%
+    mutate(AB_per_game = AB/G, R_per_game = R/G) %>%
+    summarize(r = cor(AB_per_game, R_per_game)) %>% 
+    pull(r)
+corr
+```
+
+The solution for this correlation is cor(runs per game, at bats per game) = `r corr`
+
+* 8. Use the same filtered dataset from previous question. 
+What is the correlation coeffcient between win rate (number of win per game and number of errors per game)? 
+solution:
+
+```{r 8q, echo=FALSE}
+
+corr1 <- Teams %>% 
+    filter(yearID %in% 1961:2001 ) %>%
+    mutate(win_rate = W/G, E_rate = E/G) %>% 
+    summarize(r = cor(win_rate, E_rate)) %>% 
+    pull(r)
+corr1
+```
+answer : **correlation = `r corr1` **
+
+* 9. What is the correlation coefficient between doubles(X2B) per game and triples (X3B) per game?
+
+```{r 9q, echo=FALSE}
+
+corr2 <- Teams %>% 
+     filter(yearID %in% 1961:2001) %>%
+     mutate(triples_per_game = X3B/G, doubles_per_game = X2B/G) %>%      summarize(r = cor(triples_per_game, doubles_per_game)) %>% 
+     pull(r)
+
+corr2
+```
+
+answer: **correlation = `r corr2` **
