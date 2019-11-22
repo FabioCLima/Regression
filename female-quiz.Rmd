@@ -1,0 +1,282 @@
+---
+title: "Regressão"
+author: "Fabio Carvalho Lima"
+date: "14/11/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r pacotes}
+
+options(digits = 6)
+library(tidyverse)
+library(HistData)
+library(RColorBrewer)
+library(ggExtra)
+library(ggcorrplot)
+library(gridExtra) # para plotar os gráficos lado a lado)
+```
+
+
+
+```{r stratos-female}
+
+# split dataset between fathers and sons and mothers and daughters
+
+set.seed(1989, sample.kind = "Rounding")
+
+female_heights <- GaltonFamilies %>%
+   filter(gender == "female") %>%
+   group_by(family) %>%
+   sample_n(1) %>%
+   ungroup() %>%
+select(mother, childHeight)   %>%
+rename(daughter = childHeight) 
+
+
+
+male_heights <- GaltonFamilies %>%
+   filter(gender == "male") %>%
+   group_by(family) %>%
+   sample_n(1) %>%
+   ungroup() %>%
+select(father, childHeight)   %>%
+rename(son = childHeight) 
+
+
+#family_heights <- cbind(male_heights, female_heights)
+#glimpse(family_heights)
+```
+
+Vamos fazer um resumo das mães e filhas, primeiro vamos verificar a distribuição desses dados.
+
+
+```{r resumo-estatistico}
+
+female_heights %>%
+  summarize(mean(mother), sd(mother), mean(daughter), sd(daughter), r = cor(mother, daughter))
+```
+
+```{r female-distributions}
+
+p <- female_heights %>%
+     ggplot(aes(x = mother, y = daughter)) +
+     geom_point(color = 'green') +
+     theme(legend.position = 'none')
+
+p1 <- ggMarginal(p, type ='density', color = 'magenta', size = 1.5)
+p1
+```
+
+
+```{r trend-alturas}
+
+female_heights %>% ggplot(aes(mother, daughter)) +
+                   geom_point(alpha = 0.5, color = 'magenta') + 
+                   labs(x = 'Mothers height', y = 'Daughters height')
+```
+
+O coeficiente de correlação é definido por uma lista de pares, como a média de padronizada dos valores:
+
+```{r correlation-R}
+
+x <- female_heights$mother
+y <- female_heights$daughter
+
+rho <- mean(scale(x)*scale(y))
+rho
+
+correlation <- cor(x, y, method = 'pearson')
+correlation
+```
+
+Nas aplicações mais gerais de data science, nós observamos que os dados tem variações aleatórias. Por exemplo, em muitos casos, nós não observamos os dados de toda a população de interesse, e sim uma amostra aleatória. Assim como a média e o desvio padrão amostrais, a correlação amostral é usada para estimar a correlação populacional. Isso implica que a correlação calculada é um resumo de uma variável aleatória.
+
+```{r random-variavel}
+
+R <- sample_n(female_heights, 25, replace = TRUE) %>%
+  summarize(r = cor(mother, daughter), n = n())
+R
+```
+
+R é uma variável aleatória. Nós podemos rodar a simulação de Monte Carlo para ver a sua distribuição.
+
+```{r}
+
+B <- 10^3
+n <- 25
+R <- replicate(B, {
+  sample_n(female_heights, n, replace = TRUE) %>%
+    summarize(r = cor(mother, daughter)) %>%
+    pull(r)
+})
+```
+
+```{r plot-MC}
+
+ggplot(data = NULL, aes(x = R)) + 
+  geom_histogram(binwidth = 0.1, fill = "#69b3a2", color = 'black')
+```
+
+Nós podemos ver que o valor esperado de R é o do a correlação populacional = `r round(mean(R), digits = 4)` e que tem um erro padrão de valor:
+
+o erro do desvio padrão dos valores que a correlação pode assumir = `r sd(R)` 
+
+
+Lembremos que qdo interpretarmos correlações, que elas derivam de amostras então suas estimativas tem incertezas. Como a correlação amostral tem uma média *iid*, o teorema central do limite também se aplica. Portanto, para grandes valores de n, a distribuição de R é aproximadamente normal com valor esperado de $\rho$. O desvio padrão que é complexo de se derivar pode ser calculado por:
+$$
+\sqrt \frac{1 - r^{2}}{n - 2}
+$$
+
+No nosso exemplo, anterior n = 25 não parece ser grande o suficiente para fazer aproximações boas:
+
+```{r}
+
+data.frame(R) %>%
+  ggplot(aes(sample = R)) + 
+  stat_qq(color = 'red') +
+  geom_abline(color = 'red',size = 1, intercept = mean(R), slope = sqrt((1 - mean(R)^2)/(n - 2)))
+```
+
+```{r}
+
+p <- female_heights %>%
+     ggplot(aes(x = x)) +
+     geom_histogram(binwidth = 0.5, aes(x = mother, y = ..density.., fill = "mother"), color = "#69b3a2") +
+     geom_histogram(binwidth = 0.5, aes(x = daughter, y = -..density.., fill = "daughter"), color = "#404080") 
+
+p     
+```
+
+```{r mother-averages}
+
+sum(female_heights$mother == 60)
+```
+
+Temos  ` r sum(female_heights$mother == 64) `, mães que tem exatamente 60 polegadas de altura. Condicionando as espectativas e definindo estratos com valores similares de altura, iguais a 60 inches.
+
+```{r conditional}
+
+conditional_avg <- female_heights %>%
+  filter(round(mother) == 60) %>%
+  summarize(avg = mean(daughter)) %>%
+  pull(avg)
+
+conditional_avg
+```
+
+```{r boxplot-conditional}
+
+female_heights %>% mutate(mother_strata = factor(round(mother))) %>%
+  ggplot(aes(mother_strata, daughter, color = mother_strata)) +
+  geom_boxplot() +
+  geom_point() + scale_color_discrete(guide = FALSE)
+```
+
+```{r}
+
+female_heights %>%
+  mutate(mother = round(mother)) %>%
+  group_by(mother) %>%
+  summarize(daughter_conditional_avg = mean(daughter)) %>%
+  ggplot(aes(mother, daughter_conditional_avg)) +
+  geom_point()
+```
+
+
+
+```{r regression-line}
+
+# calculate values to plot regression line on original data
+
+mu_x <- mean(female_heights$mother)
+mu_y <- mean(female_heights$daughter)
+s_x <- sd(female_heights$mother)
+s_y <- sd(female_heights$daughter)
+r <- cor(female_heights$mother, female_heights$daughter)
+m <- r * s_y/s_x # slope
+b <- mu_y - m*mu_x # intercept b
+
+# outra maneira de calcular a correlação entre x e y
+# do meu livro de machine learning R
+
+ro <- cov(female_heights$mother, female_heights$daughter)/(s_x*s_y)
+c(r, ro)
+c(m, b)
+```
+```{r female-regression}
+
+female_heights %>%
+  ggplot(aes(mother, daughter)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = b, slope = m)
+```
+
+
+
+```{r}
+
+var_rho <- (r^2)*100
+var_rho
+```
+
+```{r}
+r*s_y/s_x
+y <- b + m*60
+y
+```
+
+O altura esperada da filha, pode ser calculada usando a seguinte equação:
+
+$y = b + mx$ com a inclinação $m = \rho \frac{\sigma_y}{\sigma_x}$ e a intersecção $b = \mu_y - m\mu_x$
+
+```{r scatterplots, eval=FALSE, include=FALSE}
+
+
+p1 <- ggplot(data = NULL, aes(x = mothers, y = sons)) + 
+      geom_point(color = "#69b3a2")
+
+p2 <-  ggplot(data = NULL, aes(x = mothers, y = daugthers)) + 
+      geom_point(color = "#69b4a8")
+
+p3 <-  ggplot(data = NULL, aes(x = fathers, y = sons)) + 
+      geom_point(color = "#404080")
+
+p4 <- ggplot(data = NULL, aes(x = fathers, y = daugthers)) + 
+      geom_point(color = "#414181")
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+
+```{r correlations, eval=FALSE, include=FALSE}
+mothers <- female_heights$mother
+length(mothers)
+daugthers <- female_heights$daughter
+length(daugthers)
+fathers <- male_heights$father
+length(fathers)
+sons <- male_heights$son
+length(sons)
+
+r1 <- cor(mothers, daugthers)
+r1
+r2 <- cor(mothers, sons[-3])
+r2
+r3 <- cor(fathers[-3], daugthers)
+r3
+r4 <- cor(fathers, sons)
+r4
+```
+```{r cor-mother-daugthers}
+
+female_heights %>%
+  mutate(z_mother = round((mother - mean(mother))/sd(mother))) %>%
+  filter(z_mother %in% -2:2)  %>%
+  ggplot()+
+  stat_qq(aes(sample = daughter)) +
+    facet_wrap(~ z_mother)
+```
+

@@ -1,0 +1,299 @@
+---
+title: "Regressão Linear"
+output: html_notebook
+---
+
+
+
+## Introdução:
+
+A regressão linear é uma técnica estatística usada para analisar e modelar relações lineares entre uma variável dependente e uma ou mais variáveis independentes. Se a relação entre as variáveis for linear, então uma linha reta pode ser ajusta aos dados para modelar a relação entre elas. A equação  de regressão linear (ou a equação para uma linha reta) bivariada toma a seguinte forma:
+
+$$
+Y = \beta_{0} + \beta_{1}X
+$$
+Sendo $Y$ a *variável dependente ou resposta*, $\beta_{0}$ a intersecção com o eixo Y, $\beta_{1}$ o coeficiente angular da reta.
+
+A análise de regressão é uma técnica que permite estimar o comportamento médio, de uma variável resposta em relação a uma ou mais variáveis explicativas.Por exemplo, estimar a altura média dos filhos a partir da altura de seus pais, estimar quanto um motor pode consumir de combustível, baseado na sua potência média, etc.
+
+## Estudo de caso: A altura é hereditária ?
+
+A teoria e desenvolvimento das técnicas necessárias para conduzir a regressão, surgiram com o matemático, estatístico e antropólogo Francis Galton. Galton coletou, e estudou dados de altura entre familiares, com o objetivo de tentar entender a hereditariedade. Enquanto fazia seus estudos, ele desenvolveu os conceitos de **correlação** e **regressão**, como também de pares de dados que seguem uma distribuição normal. Ao estudar as estaturas de pais e filhos, Galton observou que filhos de pais com altura baixa em relação à média tendem a ser mais altos que seus pais, e filhos de pais com estatura alta em relação à média tendem a ser mais baixos que seus pais, ou seja, as alturas dos seres humanos em geral tendem a **regredir**  a média.
+
+
+
+```{r dataset-packages, include=FALSE}
+
+library(tidyverse)
+library(HistData)
+library(ggExtra)
+data(GaltonFamilies)
+options(digits = 5)
+```
+
+Vamos examinar o dataset e verificar a sua estrutura.
+
+```{r dataset}
+
+str(GaltonFamilies)
+```
+
+Neste dataset, temos 8 variáveis(as importantes para o nosso estudo são, pais, mães, filhos e filhas). Primeiro vamos criar 2 conjuntos de pares de dados, **pais - filhos (male)** e **mulheres - filhas (female)**
+
+```{r males-group}
+
+set.seed(1983)
+galton.heights_male <- GaltonFamilies %>%
+      filter(gender == "male") %>%
+      group_by(family) %>%
+      sample_n(1) %>%
+      ungroup() %>%
+      select(father, childHeight) %>%
+      rename(son = childHeight)
+
+str(galton.heights_male)     
+```
+
+
+```{r female-group}
+
+set.seed(1983)
+galton.heights_female <- GaltonFamilies %>%
+      filter(gender == "female") %>%
+      group_by(family) %>%
+      sample_n(1) %>%
+      ungroup() %>%
+      select(mother, childHeight) %>%
+      rename(daughter = childHeight)
+
+str(galton.heights_female)    
+```
+
+Vamos dar uma olhada nas distribuições para ver se tem distribuições normais.
+
+```{r hist-males}
+
+p <- galton.heights_male %>%
+     ggplot(aes(x = father, y = son)) +
+     geom_point(color = 'green') +
+     theme(legend.position = 'none')
+
+p1 <- ggMarginal(p, type = 'hist', color = 'magenta', size = 1.5)
+p1
+```
+
+```{r hist-females}
+
+p <- galton.heights_female %>%
+     ggplot(aes(x = mother, y = daughter)) +
+     geom_point(color = 'green') +
+     theme(legend.position = 'none')
+
+p1 <- ggMarginal(p, type = 'hist', color = 'magenta', size = 1.5)
+p1
+```
+
+Agora que olhamos as distribuições dos pares (pais/filhos e mães/filhas), vamos prosseguir fazendo um resumo estatístico destes pares.
+
+```{r father-son}
+
+galton.heights_male %>%
+    summarize(mean(father), sd(father), mean(son), sd(son))
+```
+
+```{r scatterplot-males}
+```
+
+
+```{r scatterplot-males}
+galton.heights_male %>%
+  ggplot(aes(father, son)) + 
+  geom_point(color = 'red', size = 4, alpha = 1) +
+  geom_point(color = 'blue', size = 2.5, alpha = 1)
+```
+
+
+Podemos observar nesse gráfico, que a medida que altura do pai cresce a altura do respectivo filho também.
+Vamos o resumo para os dados das mães/filhas.
+
+```{r mother-daughter}
+galton.heights_female %>%
+    summarize(mean(mother), sd(mother), mean(daughter), sd(daughter))
+```
+
+
+```{r scatterplot-female}
+
+
+galton.heights_female %>%
+  ggplot(aes(mother, daughter)) + 
+  geom_point(color = 'green', size = 4, alpha = 1) +
+  geom_point(color = 'red', size = 2.5, alpha = 1)
+```
+
+
+O coeficiente de correlação
+---
+
+O coeficiente de correlação é definido para uma lista de pares, como o produto da média pelos valores padronizados.
+
+Em notação do R, pode ser escrito assim:
+```{r correlation-definition, eval=FALSE, include=FALSE}
+
+rho <- mean(scale(x)*scale(y))
+```
+
+Calculando a correlação entre mães e filhas / pais e filhos.
+
+```{r cor-female}
+
+galton.heights_female %>%
+    summarize(r_f = cor(mother, daughter)) %>% pull(r_f)
+```
+
+```{r cor-male}
+
+galton.heights_male %>% 
+  summarize(r_m = cor(father, son)) %>% pull(r_m)
+```
+
+Nos 2 conjuntos de dados, temos que as amostras dos pares pai/filho e mãe/filha, são variáveis aleatórias, onde podemos usar as médias, desvios padrões e correlações dessas amostras, para estimar as respectivas estatísticas populacionais.
+
+Para verificar a distribuição da correlação, podemos usar a simulação de monte carlo e plotar a sua distribuição.
+
+```{r cor-Mc}
+
+B <- 10^4 # numero de simulações
+n <- 50   # tamanho da amostra
+R <- replicate(B, {
+  sample_n(galton.heights_male, n, replace = TRUE) %>%
+    summarize(r = cor(father, son)) %>%
+    pull(r)
+})
+```
+
+```{r qplot-R}
+qplot(R, geom = "histogram", binwidth = 0.05, color = I('blue'))
+```
+
+Podemos ver que o valor esperado de R para a correlação populacional é:
+```{r R-pop}
+
+cat("R = ", mean(R), "\n")
+cat("sigma R = ", sd(R), "\n")
+```
+
+Então, quando estivermos interpretando correlações é importante lembrar que, elas são estimadas de amostras experimentais (observadas), e portanto contém incertezas nas suas estimativas.
+
+Vamos checar se a amostra é grande o suficiente para valer o teorema do central do limite.
+
+```{r qq-plot}
+
+data.frame(R) %>%
+  ggplot(aes(sample = R)) +
+  stat_qq() + 
+  geom_abline(intercept = mean(R), slope = sqrt((1 - mean(R)^2)/(n - 2)))
+```
+
+```{r conditional-avg}
+
+conditional_avg <- galton.heights_male %>%
+  filter(round(father) == 72) %>%
+  summarize(avg = mean(son)) %>%
+  pull(avg)
+  
+conditional_avg  
+```
+
+$$
+Y = \beta_{0} + \beta_{1}X                       \\
+\beta_{0} = \mu_{y} - \beta_{1}\mu_{x}           \\
+\beta_{1} = \rho \frac{\sigma_{y}}{\sigma_{x}}    \\
+\rho = cor(x,y)
+$$
+
+```{r pai-filho}
+
+x <- galton.heights_male$father
+y <- galton.heights_male$son
+fit <- lm(y ~ x, data = galton.heights_male)
+coef(fit)
+```
+Podemos interpretar essa o coeficiente angular como, para cada predição da altura do filho aumenta com $\beta_{1}$ para cada uma polegada de aumento na altura do pai.
+
+```{r mãe/filha}
+
+x <- galton.heights_female$mother
+y <- galton.heights_female$daughter
+fit <- lm(y ~ x, data = galton.heights_female)
+coef(fit)
+```
+
+* Distribuições bivariadas normais - se X é uma variável aleatória normalmente distribuída, Y também é variável aleatória normalmente distribuída, e a distribuição condicional de Y para qualquer $X = x$ é aproximadamente normal, então o par é aproximadamente bivariada normal.
+
+```{r}
+summary(fit)$r.squared*100
+```
+
+```{r plot-predictions}
+
+galton.heights_male %>% ggplot(aes(father, son)) +
+    geom_point() +
+    geom_smooth(method = "lm")
+
+```
+
+```{r}
+model <- lm(son ~ father, data = galton.heights_male)
+predictions <- predict(model, interval = c("confidence"), level = 0.95)
+
+data <- as.tibble(predictions) %>%
+bind_cols(father = galton.heights_male$father)
+ggplot(data, aes(x = father, y = fit)) +
+  geom_line(color = "blue", size = 1) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha=0.2) + 
+  geom_point(data = galton.heights_male, aes(x = father, y = son))
+```
+
+
+```{r assessment}
+
+data("GaltonFamilies")
+set.seed(1, sample.kind = "Rounding") # if you are using R 3.6 or later
+galton <- GaltonFamilies %>%
+    group_by(family, gender) %>%
+    sample_n(1) %>%
+    ungroup() %>% 
+    gather(parent, parentHeight, father:mother) %>%
+    mutate(child = ifelse(gender == "female", "daughter", "son")) %>%
+    unite(pair, c("parent", "child"))
+
+str(galton)
+```
+
+```{r assessment-tibbles}
+
+galton %>% group_by(pair) %>%
+           summarize(count = n(), cor = cor(parentHeight, childHeight)) %>%
+           filter(cor == max(cor))
+           
+           
+```
+
+```{r}
+galton %>% group_by(pair) %>%
+           summarize(count = n(), cor = cor(parentHeight, childHeight)) %>%
+           filter(cor == min(cor))
+```
+
+```{r }
+
+father.daughter <- galton %>%
+                   filter(pair == "father_daughter")
+head(father.daughter)
+x <- father.daughter$parentHeight
+y <- father.daughter$childHeight
+fit <- lm(y ~ x)
+coef(fit)
+```
+
